@@ -167,5 +167,11 @@ def get_log_handler() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_plan)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_log)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_log),
+            CommandHandler("streak", cancel_log),
+            CommandHandler("leaderboard", cancel_log),
+            CommandHandler("progress", cancel_log),
+        ],
+        allow_reentry=True,
     )

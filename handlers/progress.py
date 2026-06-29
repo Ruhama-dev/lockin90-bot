@@ -212,5 +212,11 @@ def get_progress_handler() -> ConversationHandler:
                 )
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_progress)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_progress),
+            CommandHandler("streak", cancel_progress),
+            CommandHandler("leaderboard", cancel_progress),
+            CommandHandler("log", cancel_progress),
+        ],
+        allow_reentry=True,
     )
