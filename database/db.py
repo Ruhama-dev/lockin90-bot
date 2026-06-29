@@ -19,7 +19,7 @@ def get_pool():
             minconn=1,
             maxconn=10,
             dsn=os.getenv("DATABASE_URL"),
-            sslmode="disable",
+            sslmode="require",
         )
     return _pool
 
