@@ -111,7 +111,7 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
     # 8:00 PM — Plan reminder
     scheduler.add_job(
         send_plan_reminder,
-        CronTrigger(hour=20, minute=0, timezone=TIMEZONE),
+        CronTrigger(hour=12, minute=0, timezone=TIMEZONE),
         args=[bot],
         id="plan_reminder",
         replace_existing=True,
