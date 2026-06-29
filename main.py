@@ -23,6 +23,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+import threading
+from flask import Flask
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "LockIn90 Bot is running! 🔥"
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
 
 def main():
     token = os.getenv("BOT_TOKEN")
@@ -48,6 +58,7 @@ def main():
     logger.info("✅ Scheduler started.")
 
     logger.info("🚀 LockIn90 Bot is running...")
+    threading.Thread(target=run_flask, daemon=True).start()
     app.run_polling(drop_pending_updates=True)
 
 
