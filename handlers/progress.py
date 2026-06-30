@@ -4,7 +4,7 @@ handlers/progress.py — /progress command: submit end-of-day progress + proof
 
 import os
 import re
-from telegram import Update
+from telegram import Update, InputMediaPhoto, InputMediaDocument
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
@@ -17,6 +17,8 @@ from database.queries import (
     get_log_for_today,
     submit_progress,
     update_streak,
+    get_daily_log_id,
+    add_proof_file,
 )
 from utils.helpers import (
     get_current_day_number,
@@ -96,13 +98,15 @@ async def receive_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_FOR_PROGRESS
 
     context.user_data["progress_text"] = progress_text
+    context.user_data["proof_items"] = []
 
     await update.message.reply_text(
         "📸 *Now send your proof!*\n\n"
-        "This can be:\n"
-        "• A photo (screenshot, selfie, work done)\n"
-        "• A document or file (code, notes, etc.)\n"
-        "• Or type `skip` if you don't have proof right now\n\n"
+        "You can send one or more:\n"
+        "• Photos (screenshot, selfie, work done)\n"
+        "• Documents or files (code, notes, etc.)\n\n"
+        "When you're done, type `done`.\n"
+        "Or type `skip` if you don't have proof right now.\n\n"
         "_Proof helps keep everyone accountable!_ 🔥",
         parse_mode="Markdown"
     )
@@ -110,35 +114,82 @@ async def receive_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Collects one or more photos/documents. The user types `done` to finish
+    or `skip` to submit with no proof at all."""
+
+    text = update.message.text.strip().lower() if update.message.text else None
+
+    if "proof_items" not in context.user_data:
+        context.user_data["proof_items"] = []
+
+    proof_items = context.user_data["proof_items"]
+
+    if text == "skip" and not proof_items:
+        return await _finalize_progress(update, context, proof_type="skipped")
+
+    if text == "done":
+        if not proof_items:
+            await update.message.reply_text(
+                "⚠️ You haven't sent any proof yet. Send a photo/document, or type `skip`."
+            )
+            return WAITING_FOR_PROOF
+        return await _finalize_progress(update, context, proof_type="multi")
+
+    if update.message.photo:
+        proof_items.append((update.message.photo[-1].file_id, "photo"))
+        await update.message.reply_text(
+            "✅ Photo added. Send more proof, or type `done` to finish."
+        )
+        return WAITING_FOR_PROOF
+
+    if update.message.document:
+        proof_items.append((update.message.document.file_id, "document"))
+        await update.message.reply_text(
+            "✅ Document added. Send more proof, or type `done` to finish."
+        )
+        return WAITING_FOR_PROOF
+
+    if update.message.text:
+        # Plain text proof note — append to progress_text instead of proof_files
+        progress_text = context.user_data.get("progress_text", "")
+        context.user_data["progress_text"] = (
+            progress_text + f"\n\n📝 Proof note: {update.message.text.strip()}"
+        )
+        await update.message.reply_text(
+            "✅ Note added. Send a photo/document, or type `done` to finish."
+        )
+        return WAITING_FOR_PROOF
+
+    await update.message.reply_text(
+        "⚠️ Please send a photo, document, type `done` to finish, or `skip`."
+    )
+    return WAITING_FOR_PROOF
+
+
+async def _finalize_progress(update: Update, context: ContextTypes.DEFAULT_TYPE, proof_type: str):
     telegram_id = update.effective_user.id
     member = get_member_by_telegram_id(telegram_id)
     today = get_today()
     day = get_current_day_number()
     progress_text = context.user_data.get("progress_text", "")
+    proof_items = context.user_data.get("proof_items", [])
 
-    proof_file_id = None
-    proof_type = None
-
-    if update.message.photo:
-        proof_file_id = update.message.photo[-1].file_id
-        proof_type = "photo"
-    elif update.message.document:
-        proof_file_id = update.message.document.file_id
-        proof_type = "document"
-    elif update.message.text and update.message.text.strip().lower() == "skip":
-        proof_type = "skipped"
-    else:
-        proof_file_id = None
-        proof_type = "text"
-        progress_text += f"\n\n📝 Proof note: {update.message.text.strip()}"
+    # Use the first item as the "primary" proof stored on daily_logs (backward compat)
+    primary_file_id, primary_type = (proof_items[0] if proof_items else (None, proof_type))
 
     submit_progress(
         member_id=member["member_id"],
         log_date=today,
         progress_text=progress_text,
-        proof_file_id=proof_file_id,
-        proof_type=proof_type,
+        proof_file_id=primary_file_id,
+        proof_type=primary_type,
     )
+
+    # Store every file (including the primary one) in proof_files
+    daily_log_id = get_daily_log_id(member["member_id"], today)
+    if daily_log_id:
+        for file_id, file_type in proof_items:
+            add_proof_file(daily_log_id, file_id, file_type)
 
     # Streak is updated HERE — only after both plan AND progress are complete
     new_streak = member["current_streak"] + 1
@@ -182,25 +233,42 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if GROUP_CHAT_ID and PROGRESS_TOPIC_ID and log:
         safe_log = dict(log)
         safe_log["plan_text"] = escape_markdown(log.get("plan_text", ""))
-        safe_log["progress_text"] = escape_markdown(progress_text)
+        safe_log["progress_text"] = safe_progress_text
         post_text = build_log_post_text(member, safe_log, day)
+
         try:
-            if proof_file_id and proof_type == "photo":
-                await context.bot.send_photo(
-                    chat_id=GROUP_CHAT_ID,
-                    message_thread_id=PROGRESS_TOPIC_ID,
-                    photo=proof_file_id,
-                    caption=post_text[:1024],  # Telegram caption limit
-                    parse_mode="Markdown"
-                )
-            elif proof_file_id and proof_type == "document":
-                await context.bot.send_document(
-                    chat_id=GROUP_CHAT_ID,
-                    message_thread_id=PROGRESS_TOPIC_ID,
-                    document=proof_file_id,
-                    caption=post_text[:1024],
-                    parse_mode="Markdown"
-                )
+            if proof_items:
+                # Send the first item with the full caption
+                first_id, first_type = proof_items[0]
+                if first_type == "photo":
+                    await context.bot.send_photo(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        photo=first_id,
+                        caption=post_text[:1024],
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await context.bot.send_document(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        document=first_id,
+                        caption=post_text[:1024],
+                        parse_mode="Markdown"
+                    )
+
+                # Send any remaining files as a media group (Telegram caps at 10 per group)
+                rest = proof_items[1:]
+                if rest:
+                    media = [
+                        InputMediaPhoto(fid) if ftype == "photo" else InputMediaDocument(fid)
+                        for fid, ftype in rest[:9]
+                    ]
+                    await context.bot.send_media_group(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        media=media,
+                    )
             else:
                 await context.bot.send_message(
                     chat_id=GROUP_CHAT_ID,
@@ -217,20 +285,22 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"Plan:\n{log.get('plan_text', '')}\n\n"
                     f"Progress:\n{progress_text}"
                 )
-                if proof_file_id and proof_type == "photo":
-                    await context.bot.send_photo(
-                        chat_id=GROUP_CHAT_ID,
-                        message_thread_id=PROGRESS_TOPIC_ID,
-                        photo=proof_file_id,
-                        caption=plain_post[:1024],
-                    )
-                elif proof_file_id and proof_type == "document":
-                    await context.bot.send_document(
-                        chat_id=GROUP_CHAT_ID,
-                        message_thread_id=PROGRESS_TOPIC_ID,
-                        document=proof_file_id,
-                        caption=plain_post[:1024],
-                    )
+                if proof_items:
+                    first_id, first_type = proof_items[0]
+                    if first_type == "photo":
+                        await context.bot.send_photo(
+                            chat_id=GROUP_CHAT_ID,
+                            message_thread_id=PROGRESS_TOPIC_ID,
+                            photo=first_id,
+                            caption=plain_post[:1024],
+                        )
+                    else:
+                        await context.bot.send_document(
+                            chat_id=GROUP_CHAT_ID,
+                            message_thread_id=PROGRESS_TOPIC_ID,
+                            document=first_id,
+                            caption=plain_post[:1024],
+                        )
                 else:
                     await context.bot.send_message(
                         chat_id=GROUP_CHAT_ID,

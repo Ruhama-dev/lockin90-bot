@@ -248,6 +248,7 @@ def reset_streaks_for_missed(yesterday: date):
     finally:
         release_conn(conn)
 
+
 def delete_log_for_today(member_id: str, today: date):
     conn = get_conn()
     try:
@@ -257,5 +258,53 @@ def delete_log_for_today(member_id: str, today: date):
                 (member_id, today)
             )
         conn.commit()
+    finally:
+        release_conn(conn)
+
+
+# ─────────────────────────────────────────────
+#  Proof Files (supports multiple photos/documents per submission)
+# ─────────────────────────────────────────────
+
+def get_daily_log_id(member_id: str, log_date: date) -> int | None:
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM daily_logs WHERE member_id = %s AND log_date = %s",
+                (member_id, log_date)
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        release_conn(conn)
+
+
+def add_proof_file(daily_log_id: int, file_id: str, file_type: str):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO proof_files (daily_log_id, file_id, file_type)
+                VALUES (%s, %s, %s)
+                """,
+                (daily_log_id, file_id, file_type)
+            )
+        conn.commit()
+    finally:
+        release_conn(conn)
+
+
+def get_proof_files(daily_log_id: int) -> list[dict]:
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT file_id, file_type FROM proof_files WHERE daily_log_id = %s ORDER BY id",
+                (daily_log_id,)
+            )
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
     finally:
         release_conn(conn)

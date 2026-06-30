@@ -78,6 +78,21 @@ def init_db():
                 ON daily_logs(member_id);
             """)
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS proof_files (
+                    id              SERIAL PRIMARY KEY,
+                    daily_log_id    INT NOT NULL REFERENCES daily_logs(id) ON DELETE CASCADE,
+                    file_id         VARCHAR(300) NOT NULL,
+                    file_type       VARCHAR(20) NOT NULL,   -- 'photo' | 'document'
+                    uploaded_at     TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_proof_files_log
+                ON proof_files(daily_log_id);
+            """)
+
         conn.commit()
         print("✅ Database initialized successfully.")
     finally:
