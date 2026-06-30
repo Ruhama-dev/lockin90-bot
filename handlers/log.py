@@ -3,6 +3,7 @@ handlers/log.py — /log command: submit daily plan
 """
 
 import os
+import re
 from telegram import Update
 from telegram.ext import (
     ContextTypes,
@@ -26,6 +27,15 @@ WAITING_FOR_PLAN = 10
 
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 DAILY_LOGS_TOPIC_ID = int(os.getenv("DAILY_LOGS_TOPIC_ID", "0"))
+
+
+def escape_markdown(text: str) -> str:
+    """Escape Telegram legacy Markdown special characters so user input
+    can never break message formatting."""
+    if not text:
+        return text
+    special_chars = r"_*`["
+    return re.sub(f"([{re.escape(special_chars)}])", r"\\\1", text)
 
 
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,14 +107,30 @@ async def receive_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     log_dict = {"plan_text": plan_text, "progress_text": None}
 
+    # Escape user input so special Markdown characters (*, _, `, [) can't
+    # break the message and silently crash the bot's reply.
+    safe_plan_text = escape_markdown(plan_text)
+
     reply = (
         f"✅ *Plan logged for Day {day}/90!*\n\n"
-        f"*Your plan:*\n{plan_text}\n\n"
+        f"*Your plan:*\n{safe_plan_text}\n\n"
         f"When you're done, use /progress to submit your results + proof "
         f"to complete your streak for today! 🔥"
     )
 
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    try:
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    except Exception as e:
+        # Fallback: if Markdown still fails for any reason, send as plain text
+        # so the user always gets confirmation, even if formatting breaks.
+        print(f"⚠️ Markdown reply failed, sending plain text instead: {e}")
+        plain_reply = (
+            f"✅ Plan logged for Day {day}/90!\n\n"
+            f"Your plan:\n{plan_text}\n\n"
+            f"When you're done, use /progress to submit your results + proof "
+            f"to complete your streak for today! 🔥"
+        )
+        await update.message.reply_text(plain_reply)
 
     # Post to group Daily Logs topic (plan only, no streak/leaderboard yet)
     if GROUP_CHAT_ID and DAILY_LOGS_TOPIC_ID:
@@ -117,7 +143,20 @@ async def receive_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         except Exception as e:
-            print(f"⚠️ Could not post to group logs topic: {e}")
+            print(f"⚠️ Could not post to group logs topic (Markdown), retrying plain: {e}")
+            try:
+                plain_post = (
+                    f"Daily Log — {member['full_name'] or member['member_id']}\n"
+                    f"{member['member_id']}  |  Day {day}/90\n\n"
+                    f"Plan:\n{plan_text}"
+                )
+                await context.bot.send_message(
+                    chat_id=GROUP_CHAT_ID,
+                    message_thread_id=DAILY_LOGS_TOPIC_ID,
+                    text=plain_post,
+                )
+            except Exception as e2:
+                print(f"⚠️ Could not post to group logs topic at all: {e2}")
 
     return ConversationHandler.END
 

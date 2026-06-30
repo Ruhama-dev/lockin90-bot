@@ -3,6 +3,7 @@ handlers/progress.py — /progress command: submit end-of-day progress + proof
 """
 
 import os
+import re
 from telegram import Update
 from telegram.ext import (
     ContextTypes,
@@ -16,23 +17,28 @@ from database.queries import (
     get_log_for_today,
     submit_progress,
     update_streak,
-    get_leaderboard_with_today_status,
 )
 from utils.helpers import (
     get_current_day_number,
     get_today,
     get_streak_milestone,
     build_log_post_text,
-    build_leaderboard_text,
 )
 
 WAITING_FOR_PROGRESS = 20
 WAITING_FOR_PROOF = 21
 
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
-DAILY_LOGS_TOPIC_ID = int(os.getenv("DAILY_LOGS_TOPIC_ID", "0"))
 PROGRESS_TOPIC_ID = int(os.getenv("PROGRESS_TOPIC_ID", "0"))
-GENERAL_TOPIC_ID = int(os.getenv("GENERAL_TOPIC_ID", "0"))
+
+
+def escape_markdown(text: str) -> str:
+    """Escape Telegram legacy Markdown special characters so user input
+    can never break message formatting."""
+    if not text:
+        return text
+    special_chars = r"_*`["
+    return re.sub(f"([{re.escape(special_chars)}])", r"\\\1", text)
 
 
 async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,9 +62,10 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if log.get("progress_text"):
+        safe_progress = escape_markdown(log["progress_text"])
         await update.message.reply_text(
             "✅ You've already submitted your progress for today!\n\n"
-            f"*What you did:*\n{log['progress_text']}",
+            f"*What you did:*\n{safe_progress}",
             parse_mode="Markdown"
         )
         return ConversationHandler.END
@@ -66,7 +73,7 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     day = get_current_day_number()
     await update.message.reply_text(
         f"💪 *Progress Report — Day {day}/90*\n\n"
-        f"*Your plan was:*\n{log['plan_text']}\n\n"
+        f"*Your plan was:*\n{escape_markdown(log['plan_text'])}\n\n"
         f"Now tell me what you actually accomplished today! Be honest. ✅\n\n"
         f"*Example:*\n"
         f"```\n"
@@ -144,16 +151,27 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member["total_days"] = total
 
     milestone = get_streak_milestone(new_streak)
+    safe_progress_text = escape_markdown(progress_text)
     reply = (
         f"🎉 *Progress submitted for Day {day}/90!*\n\n"
-        f"*What you did:*\n{progress_text}\n\n"
+        f"*What you did:*\n{safe_progress_text}\n\n"
         f"🔥 Streak: *{new_streak} day{'s' if new_streak != 1 else ''}*\n\n"
         f"Keep showing up! See you tomorrow. 💪"
     )
     if milestone:
         reply += f"\n\n🎉 *{milestone}*"
 
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    try:
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    except Exception as e:
+        print(f"⚠️ Markdown reply failed, sending plain text instead: {e}")
+        plain_reply = (
+            f"🎉 Progress submitted for Day {day}/90!\n\n"
+            f"What you did:\n{progress_text}\n\n"
+            f"Streak: {new_streak} day{'s' if new_streak != 1 else ''}\n\n"
+            f"Keep showing up! See you tomorrow. 💪"
+        )
+        await update.message.reply_text(plain_reply)
 
     # Reload log for group post
     log = get_log_for_today(member["member_id"], today)
@@ -162,14 +180,17 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Post progress + proof to Progress topic
     if GROUP_CHAT_ID and PROGRESS_TOPIC_ID and log:
-        post_text = build_log_post_text(member, log, day)
+        safe_log = dict(log)
+        safe_log["plan_text"] = escape_markdown(log.get("plan_text", ""))
+        safe_log["progress_text"] = escape_markdown(progress_text)
+        post_text = build_log_post_text(member, safe_log, day)
         try:
             if proof_file_id and proof_type == "photo":
                 await context.bot.send_photo(
                     chat_id=GROUP_CHAT_ID,
                     message_thread_id=PROGRESS_TOPIC_ID,
                     photo=proof_file_id,
-                    caption=post_text,
+                    caption=post_text[:1024],  # Telegram caption limit
                     parse_mode="Markdown"
                 )
             elif proof_file_id and proof_type == "document":
@@ -177,7 +198,7 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=GROUP_CHAT_ID,
                     message_thread_id=PROGRESS_TOPIC_ID,
                     document=proof_file_id,
-                    caption=post_text,
+                    caption=post_text[:1024],
                     parse_mode="Markdown"
                 )
             else:
@@ -188,8 +209,39 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
         except Exception as e:
-            print(f"⚠️ Could not post progress to group: {e}")
+            print(f"⚠️ Could not post progress to group (Markdown), retrying plain: {e}")
+            try:
+                plain_post = (
+                    f"Daily Log — {member['full_name'] or member['member_id']}\n"
+                    f"{member['member_id']}  |  Day {day}/90  |  Streak: {member['current_streak']}\n\n"
+                    f"Plan:\n{log.get('plan_text', '')}\n\n"
+                    f"Progress:\n{progress_text}"
+                )
+                if proof_file_id and proof_type == "photo":
+                    await context.bot.send_photo(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        photo=proof_file_id,
+                        caption=plain_post[:1024],
+                    )
+                elif proof_file_id and proof_type == "document":
+                    await context.bot.send_document(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        document=proof_file_id,
+                        caption=plain_post[:1024],
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=GROUP_CHAT_ID,
+                        message_thread_id=PROGRESS_TOPIC_ID,
+                        text=plain_post,
+                    )
+            except Exception as e2:
+                print(f"⚠️ Could not post progress to group at all: {e2}")
 
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 async def cancel_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
