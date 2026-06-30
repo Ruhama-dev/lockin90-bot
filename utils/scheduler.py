@@ -102,7 +102,7 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
     # 6:00 AM — Morning leaderboard + streak reset
     scheduler.add_job(
         post_morning_leaderboard,
-        CronTrigger(hour=14, minute=25, timezone=TIMEZONE),
+        CronTrigger(hour=14, minute=47, timezone=TIMEZONE),
         args=[bot],
         id="morning_leaderboard",
         replace_existing=True,
