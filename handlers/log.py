@@ -15,14 +15,10 @@ from database.queries import (
     get_member_by_telegram_id,
     get_log_for_today,
     submit_plan,
-    update_streak,
-    get_leaderboard_with_today_status,
 )
 from utils.helpers import (
     get_current_day_number,
     get_today,
-    get_streak_milestone,
-    build_leaderboard_text,
     build_log_post_text,
 )
 
@@ -30,7 +26,6 @@ WAITING_FOR_PLAN = 10
 
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 DAILY_LOGS_TOPIC_ID = int(os.getenv("DAILY_LOGS_TOPIC_ID", "0"))
-GENERAL_TOPIC_ID = int(os.getenv("GENERAL_TOPIC_ID", "0"))
 
 
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,34 +92,21 @@ async def receive_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    # Update streak
-    new_streak = member["current_streak"] + 1
-    longest = max(new_streak, member["longest_streak"])
-    total = member["total_days"] + 1
-    update_streak(member["member_id"], new_streak, longest, total)
+    # NOTE: Streak is NOT updated here anymore.
+    # It only updates once /progress is submitted (see handlers/progress.py).
 
-    # Refresh member data
-    member["current_streak"] = new_streak
-    member["longest_streak"] = longest
-    member["total_days"] = total
-
-    # Build fake log dict for display
     log_dict = {"plan_text": plan_text, "progress_text": None}
 
-    # Confirm to user
-    milestone = get_streak_milestone(new_streak)
     reply = (
         f"✅ *Plan logged for Day {day}/90!*\n\n"
-        f"🔥 Streak: *{new_streak} day{'s' if new_streak != 1 else ''}*\n\n"
         f"*Your plan:*\n{plan_text}\n\n"
-        f"When you're done, use /progress to submit your results + proof!"
+        f"When you're done, use /progress to submit your results + proof "
+        f"to complete your streak for today! 🔥"
     )
-    if milestone:
-        reply += f"\n\n🎉 *{milestone}*"
 
     await update.message.reply_text(reply, parse_mode="Markdown")
 
-    # Post to group Daily Logs topic
+    # Post to group Daily Logs topic (plan only, no streak/leaderboard yet)
     if GROUP_CHAT_ID and DAILY_LOGS_TOPIC_ID:
         post_text = build_log_post_text(member, log_dict, day)
         try:
@@ -136,20 +118,6 @@ async def receive_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             print(f"⚠️ Could not post to group logs topic: {e}")
-
-    # Post updated leaderboard to General topic
-    if GROUP_CHAT_ID and GENERAL_TOPIC_ID:
-        rows = get_leaderboard_with_today_status(today)
-        lb_text = build_leaderboard_text(rows, day)
-        try:
-            await context.bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                message_thread_id=GENERAL_TOPIC_ID,
-                text=lb_text,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"⚠️ Could not post leaderboard: {e}")
 
     return ConversationHandler.END
 

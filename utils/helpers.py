@@ -3,7 +3,8 @@ utils/helpers.py — Shared utility functions
 """
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,16 +13,26 @@ CHALLENGE_START = date.fromisoformat(
     os.getenv("CHALLENGE_START_DATE", "2026-06-29")
 )
 
-
-def get_current_day_number() -> int:
-    """Returns the current challenge day (1-based). Returns 0 before start."""
-    today = date.today()
-    delta = (today - CHALLENGE_START).days + 1
-    return max(0, min(delta, 90))
+TIMEZONE = pytz.timezone("Africa/Addis_Ababa")  # UTC+3
 
 
 def get_today() -> date:
-    return date.today()
+    """
+    Returns the 'logging day' based on East Africa Time.
+    The logging window runs 6:00 AM to 5:59 AM the next morning,
+    so anytime before 6 AM still counts as the previous day.
+    """
+    now = datetime.now(TIMEZONE)
+    if now.hour < 6:
+        return (now - timedelta(days=1)).date()
+    return now.date()
+
+
+def get_current_day_number() -> int:
+    """Returns the current challenge day (1-based). Returns 0 before start."""
+    today = get_today()
+    delta = (today - CHALLENGE_START).days + 1
+    return max(0, min(delta, 90))
 
 
 def validate_member_id(member_id: str) -> bool:

@@ -15,11 +15,13 @@ from database.queries import (
     get_member_by_telegram_id,
     get_log_for_today,
     submit_progress,
+    update_streak,
     get_leaderboard_with_today_status,
 )
 from utils.helpers import (
     get_current_day_number,
     get_today,
+    get_streak_milestone,
     build_log_post_text,
     build_leaderboard_text,
 )
@@ -131,13 +133,27 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         proof_type=proof_type,
     )
 
-    await update.message.reply_text(
+    # Streak is updated HERE — only after both plan AND progress are complete
+    new_streak = member["current_streak"] + 1
+    longest = max(new_streak, member["longest_streak"])
+    total = member["total_days"] + 1
+    update_streak(member["member_id"], new_streak, longest, total)
+
+    member["current_streak"] = new_streak
+    member["longest_streak"] = longest
+    member["total_days"] = total
+
+    milestone = get_streak_milestone(new_streak)
+    reply = (
         f"🎉 *Progress submitted for Day {day}/90!*\n\n"
         f"*What you did:*\n{progress_text}\n\n"
-        f"🔥 Streak: *{member['current_streak']} days*\n\n"
-        f"Keep showing up! See you tomorrow. 💪",
-        parse_mode="Markdown"
+        f"🔥 Streak: *{new_streak} day{'s' if new_streak != 1 else ''}*\n\n"
+        f"Keep showing up! See you tomorrow. 💪"
     )
+    if milestone:
+        reply += f"\n\n🎉 *{milestone}*"
+
+    await update.message.reply_text(reply, parse_mode="Markdown")
 
     # Reload log for group post
     log = get_log_for_today(member["member_id"], today)
@@ -174,7 +190,7 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"⚠️ Could not post progress to group: {e}")
 
-    # Post updated leaderboard to General topic
+    # Post updated leaderboard to General topic (NOW streak is accurate)
     if GROUP_CHAT_ID and GENERAL_TOPIC_ID:
         rows = get_leaderboard_with_today_status(today)
         lb_text = build_leaderboard_text(rows, day)
