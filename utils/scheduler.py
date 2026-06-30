@@ -85,6 +85,7 @@ async def post_morning_leaderboard(bot):
     rows = get_leaderboard_with_today_status(today)
     lb_text = build_leaderboard_text(rows, day)
 
+    logger.info(f"DEBUG: chat_id={GROUP_CHAT_ID} (type {type(GROUP_CHAT_ID)}), thread_id={GENERAL_TOPIC_ID} (type {type(GENERAL_TOPIC_ID)})")
     try:
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
@@ -95,14 +96,13 @@ async def post_morning_leaderboard(bot):
     except Exception as e:
         logger.error(f"Could not post morning leaderboard: {e}")
 
-
 def setup_scheduler(bot) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
     # 6:00 AM — Morning leaderboard + streak reset
     scheduler.add_job(
         post_morning_leaderboard,
-        CronTrigger(hour=14, minute=47, timezone=TIMEZONE),
+        CronTrigger(hour=15, minute=5, timezone=TIMEZONE),
         args=[bot],
         id="morning_leaderboard",
         replace_existing=True,
