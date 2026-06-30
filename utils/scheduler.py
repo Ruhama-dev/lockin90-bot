@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 TIMEZONE = pytz.timezone("Africa/Addis_Ababa")  # UTC+3, adjust if needed
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 PROGRESS_TOPIC_ID = int(os.getenv("PROGRESS_TOPIC_ID", "0"))
-TEST_TOPIC_ID = int(os.getenv("PROGRESS_TOPIC_ID", "0"))  # temporary test
 
 async def send_plan_reminder(bot):
     """8:00 PM — DM members who haven't logged their plan yet."""
@@ -78,18 +77,18 @@ async def post_morning_leaderboard(bot):
     # Reset streaks for those who missed yesterday
     reset_streaks_for_missed(yesterday)
 
-    if not GROUP_CHAT_ID or not TEST_TOPIC_ID:
-        logger.warning("GROUP_CHAT_ID or TEST_TOPIC_ID not set — skipping leaderboard post.")
+    if not GROUP_CHAT_ID or not PROGRESS_TOPIC_ID:
+        logger.warning("GROUP_CHAT_ID or PROGRESS_TOPIC_ID not set — skipping leaderboard post.")
         return
 
     rows = get_leaderboard_with_today_status(today)
     lb_text = build_leaderboard_text(rows, day)
 
-    logger.info(f"DEBUG: chat_id={GROUP_CHAT_ID} (type {type(GROUP_CHAT_ID)}), thread_id={TEST_TOPIC_ID} (type {type(TEST_TOPIC_ID)})")
+    
     try:
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
-            message_thread_id=TEST_TOPIC_ID,
+            message_thread_id=PROGRESS_TOPIC_ID,
             text=f"🌅 *Good morning, LockIn 90!*\n\nDay *{day}/90* begins now. Let's go!\n\n" + lb_text,
             parse_mode="Markdown"
         )
@@ -102,7 +101,7 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
     # 6:00 AM — Morning leaderboard + streak reset
     scheduler.add_job(
         post_morning_leaderboard,
-        CronTrigger(hour=15, minute=31, timezone=TIMEZONE),
+        CronTrigger(hour=6, minute=0, timezone=TIMEZONE),
         args=[bot],
         id="morning_leaderboard",
         replace_existing=True,

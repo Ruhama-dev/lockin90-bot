@@ -190,22 +190,6 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"⚠️ Could not post progress to group: {e}")
 
-    # Post updated leaderboard to General topic (NOW streak is accurate)
-    if GROUP_CHAT_ID and GENERAL_TOPIC_ID:
-        rows = get_leaderboard_with_today_status(today)
-        lb_text = build_leaderboard_text(rows, day)
-        try:
-            await context.bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                message_thread_id=GENERAL_TOPIC_ID,
-                text=lb_text,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"⚠️ Could not post leaderboard: {e}")
-
-    context.user_data.clear()
-    return ConversationHandler.END
 
 
 async def cancel_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
