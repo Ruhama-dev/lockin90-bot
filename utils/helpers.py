@@ -57,7 +57,7 @@ def get_streak_milestone(streak: int) -> str | None:
 
 
 def build_leaderboard_text(rows: list[dict], day_number: int) -> str:
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    medals = {1: "1.", 2: "2.", 3: "3."}
     lines = [
         f"🏆 *LockIn 90 — Leaderboard*",
         f"📅 Day {day_number}/90\n",
