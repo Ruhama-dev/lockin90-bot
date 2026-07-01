@@ -238,32 +238,33 @@ async def _finalize_progress(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         try:
             if proof_items:
-                # Send the first item with the full caption
-                first_id, first_type = proof_items[0]
-                if first_type == "photo":
-                    await context.bot.send_photo(
-                        chat_id=GROUP_CHAT_ID,
-                        message_thread_id=PROGRESS_TOPIC_ID,
-                        photo=first_id,
-                        caption=post_text[:1024],
-                        parse_mode="Markdown"
-                    )
+                if len(proof_items) == 1:
+                    first_id, first_type = proof_items[0]
+                    if first_type == "photo":
+                        await context.bot.send_photo(
+                            chat_id=GROUP_CHAT_ID,
+                            message_thread_id=PROGRESS_TOPIC_ID,
+                            photo=first_id,
+                            caption=post_text[:1024],
+                            parse_mode="Markdown"
+                        )
+                    else:
+                        await context.bot.send_document(
+                            chat_id=GROUP_CHAT_ID,
+                            message_thread_id=PROGRESS_TOPIC_ID,
+                            document=first_id,
+                            caption=post_text[:1024],
+                            parse_mode="Markdown"
+                        )
                 else:
-                    await context.bot.send_document(
-                        chat_id=GROUP_CHAT_ID,
-                        message_thread_id=PROGRESS_TOPIC_ID,
-                        document=first_id,
-                        caption=post_text[:1024],
-                        parse_mode="Markdown"
-                    )
-
-                # Send any remaining files as a media group (Telegram caps at 10 per group)
-                rest = proof_items[1:]
-                if rest:
-                    media = [
-                        InputMediaPhoto(fid) if ftype == "photo" else InputMediaDocument(fid)
-                        for fid, ftype in rest[:9]
-                    ]
+                    media = []
+                    for i, (fid, ftype) in enumerate(proof_items[:10]):
+                        caption = post_text[:1024] if i == 0 else None
+                        parse_mode = "Markdown" if i == 0 else None
+                        if ftype == "photo":
+                            media.append(InputMediaPhoto(fid, caption=caption, parse_mode=parse_mode))
+                        else:
+                            media.append(InputMediaDocument(fid, caption=caption, parse_mode=parse_mode))
                     await context.bot.send_media_group(
                         chat_id=GROUP_CHAT_ID,
                         message_thread_id=PROGRESS_TOPIC_ID,
