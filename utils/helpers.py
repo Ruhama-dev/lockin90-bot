@@ -3,6 +3,7 @@ utils/helpers.py — Shared utility functions
 """
 
 import os
+import re
 from datetime import date, datetime, timedelta
 import pytz
 from dotenv import load_dotenv
@@ -14,6 +15,15 @@ CHALLENGE_START = date.fromisoformat(
 )
 
 TIMEZONE = pytz.timezone("Africa/Addis_Ababa")  # UTC+3
+
+
+def escape_markdown(text: str) -> str:
+    """Escape Telegram legacy Markdown special characters so user input
+    can never break message formatting."""
+    if not text:
+        return text
+    special_chars = r"_*`["
+    return re.sub(f"([{re.escape(special_chars)}])", r"\\\1", text)
 
 
 def get_today() -> date:
@@ -78,7 +88,7 @@ def build_leaderboard_text(rows: list[dict], day_number: int) -> str:
 
 
 def build_log_post_text(member: dict, log: dict, day_number: int) -> str:
-    name = member["full_name"] or member["member_id"]
+    name = escape_markdown(member["full_name"] or member["member_id"])
     streak = member["current_streak"]
     text = (
         f"📋 *Daily Log — {name}*\n"
