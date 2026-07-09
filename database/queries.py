@@ -214,6 +214,7 @@ def get_leaderboard_with_today_status(today: date) -> list[dict]:
                     m.member_id,
                     m.full_name,
                     m.current_streak,
+                    m.longest_streak,
                     m.total_days,
                     CASE WHEN dl.id IS NOT NULL THEN TRUE ELSE FALSE END AS logged_today
                 FROM members m

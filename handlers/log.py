@@ -105,7 +105,7 @@ async def receive_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # NOTE: Streak is NOT updated here anymore.
     # It only updates once /progress is submitted (see handlers/progress.py).
 
-    log_dict = {"plan_text": plan_text, "progress_text": None}
+    log_dict = {"plan_text": escape_markdown(plan_text), "progress_text": None}
 
     # Escape user input so special Markdown characters (*, _, `, [) can't
     # break the message and silently crash the bot's reply.

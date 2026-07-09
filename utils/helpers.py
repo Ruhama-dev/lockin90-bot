@@ -68,8 +68,11 @@ def build_leaderboard_text(rows: list[dict], day_number: int) -> str:
         streak = row["current_streak"]
         day_word = "day" if streak == 1 else "days"
         name = row["full_name"] or row["member_id"]
-        lines.append(f"{medal} {name} ({row['member_id']}) — {streak} {day_word} {status}")
-
+        longest = row["longest_streak"]
+        longest_word = "day" if longest == 1 else "days"
+        lines.append(
+            f"{medal} {name} ({row['member_id']}) — 🔥 {streak} {day_word}  |  🏅 Best: {longest} {longest_word} {status}"
+        )
     lines.append("\n✅ = logged today  💤 = not yet")
     return "\n".join(lines)
 

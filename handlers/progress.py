@@ -105,17 +105,15 @@ async def receive_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "You can send one or more:\n"
         "• Photos (screenshot, selfie, work done)\n"
         "• Documents or files (code, notes, etc.)\n\n"
-        "When you're done, type `done`.\n"
-        "Or type `skip` if you don't have proof right now.\n\n"
-        "_Proof helps keep everyone accountable!_ 🔥",
+        "When you're done sending proof, type `done`.\n\n"
+        "_Proof is required to complete your streak!_ 🔥",
         parse_mode="Markdown"
     )
     return WAITING_FOR_PROOF
 
 
 async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Collects one or more photos/documents. The user types `done` to finish
-    or `skip` to submit with no proof at all."""
+    
 
     text = update.message.text.strip().lower() if update.message.text else None
 
@@ -124,13 +122,11 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     proof_items = context.user_data["proof_items"]
 
-    if text == "skip" and not proof_items:
-        return await _finalize_progress(update, context, proof_type="skipped")
 
     if text == "done":
         if not proof_items:
             await update.message.reply_text(
-                "⚠️ You haven't sent any proof yet. Send a photo/document, or type `skip`."
+                "⚠️ Please send a photo or document, or type `done` to finish."
             )
             return WAITING_FOR_PROOF
         return await _finalize_progress(update, context, proof_type="multi")
@@ -161,7 +157,7 @@ async def receive_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_FOR_PROOF
 
     await update.message.reply_text(
-        "⚠️ Please send a photo, document, type `done` to finish, or `skip`."
+        "⚠️ Please send a photo, document, type `done` to finish."
     )
     return WAITING_FOR_PROOF
 
