@@ -89,7 +89,7 @@ async def post_morning_leaderboard(bot):
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
             message_thread_id=PROGRESS_TOPIC_ID,
-            text=f"🌅 *Good morning, LockIn 90!*\n\nDay *{day}/90* begins now. Let's go!\n\n" + lb_text,
+            text=f"🌅 *Good morning, LockIn 90!*\n\nDay *{day}/90* begins. Let's go!\n\n" + lb_text,
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -101,7 +101,7 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
     # 6:00 AM — Morning leaderboard + streak reset
     scheduler.add_job(
         post_morning_leaderboard,
-        CronTrigger(hour=6, minute=0, timezone=TIMEZONE),
+        CronTrigger(hour=9, minute=0, timezone=TIMEZONE),
         args=[bot],
         id="morning_leaderboard",
         replace_existing=True,
