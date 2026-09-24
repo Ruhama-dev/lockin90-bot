@@ -42,7 +42,7 @@ def get_current_day_number() -> int:
     """Returns the current challenge day (1-based). Returns 0 before start."""
     today = get_today()
     delta = (today - CHALLENGE_START).days + 1
-    return max(0, min(delta, 90))
+    return max(0, min(delta, 93))
 
 
 def validate_member_id(member_id: str) -> bool:
